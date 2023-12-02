@@ -15,6 +15,9 @@ fn main() -> Result<(), String> {
     let possible_game_sum = possible_games(&games);
     println!("The sum of the IDs of possible games is {possible_game_sum}");
 
+    let power = minimal_cubes(&games);
+    println!("The power sum of the minimal amount of cubes is {power}");
+
     Ok(())
 }
 
@@ -88,6 +91,24 @@ fn possible_games(games: &[Game]) -> u32 {
             })
         })
         .map(|game| game.id)
+        .sum::<u32>()
+}
+
+fn minimal_cubes(games: &[Game]) -> u32 {
+    games
+        .iter()
+        .map(|game| {
+            let min = game
+                .selections
+                .iter()
+                .fold(Selection::default(), |mut min, curr| {
+                    min.red = min.red.max(curr.red);
+                    min.green = min.green.max(curr.green);
+                    min.blue = min.blue.max(curr.blue);
+                    min
+                });
+            min.red * min.green * min.blue
+        })
         .sum::<u32>()
 }
 
