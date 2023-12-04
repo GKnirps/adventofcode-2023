@@ -13,6 +13,9 @@ fn main() -> Result<(), String> {
     let points = total_points(&cards);
     println!("Total points: {points}");
 
+    let n_cards = total_scratchcards(&cards);
+    println!("You got {n_cards} scratch cards.");
+
     Ok(())
 }
 
@@ -61,6 +64,22 @@ fn total_points(cards: &[Card]) -> u32 {
         .sum()
 }
 
+fn total_scratchcards(cards: &[Card]) -> usize {
+    let mut card_numbers: Vec<usize> = vec![1; cards.len()];
+
+    for (i, matches) in cards
+        .iter()
+        .map(|card| card.winning.intersection(&card.given).count())
+        .enumerate()
+    {
+        for j in (i + 1)..card_numbers.len().min(i + matches + 1) {
+            card_numbers[j] += card_numbers[i];
+        }
+    }
+
+    card_numbers.iter().sum()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -83,5 +102,17 @@ Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11
 
         // then
         assert_eq!(points, 13);
+    }
+
+    #[test]
+    fn total_scratchcards_works_for_example() {
+        // given
+        let cards = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let number = total_scratchcards(&cards);
+
+        // then
+        assert_eq!(number, 30);
     }
 }
