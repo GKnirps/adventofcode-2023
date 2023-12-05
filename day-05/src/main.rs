@@ -16,6 +16,11 @@ fn main() -> Result<(), String> {
         println!("There were no seeds");
     }
 
+    let mapped_seed_ranges = map_seed_ranges(&almanac);
+    if let Some(min) = mapped_seed_ranges.iter().map(|(start, _)| start).min() {
+        println!("The lowest location number for seed ranges is {min}");
+    }
+
     Ok(())
 }
 
@@ -59,7 +64,7 @@ fn parse(input: &str) -> Result<Almanac, String> {
 fn parse_map(block: &str) -> Result<Vec<Map>, String> {
     // assumption: the map starts correctly with the source and destination category and we can
     // ignore it
-    block
+    let mut map = block
         .lines()
         .skip(1)
         .map(|line| {
@@ -86,7 +91,10 @@ fn parse_map(block: &str) -> Result<Vec<Map>, String> {
                 length,
             })
         })
-        .collect()
+        .collect::<Result<Vec<Map>, String>>()?;
+
+    map.sort_unstable_by_key(|m| m.source_start);
+    Ok(map)
 }
 
 fn map_seeds(almanac: &Almanac) -> Vec<u64> {
@@ -104,11 +112,72 @@ fn map_seeds(almanac: &Almanac) -> Vec<u64> {
 }
 
 fn map_category(cat: u64, map: &[Map]) -> u64 {
+    // assumption: mapping ranges do not overlap
     map.iter()
         .filter(|m| m.source_start <= cat && cat < m.source_start + m.length)
         .map(|m| (cat - m.source_start) + m.dest_start)
         .next()
         .unwrap_or(cat)
+}
+
+fn map_seed_ranges(almanac: &Almanac) -> Vec<(u64, u64)> {
+    // assumption: input seeds are valid ranges (i.e. seeds array has an even length)
+    let mut cat_ranges: Vec<(u64, u64)> = almanac
+        .seeds
+        .chunks_exact(2)
+        .map(|chunk| (chunk[0], chunk[0] + chunk[1]))
+        .collect();
+
+    for map in &almanac.maps {
+        cat_ranges = cat_ranges
+            .iter()
+            .flat_map(|(cat_start, cat_end)| map_category_range(*cat_start, *cat_end, map))
+            .collect();
+    }
+
+    cat_ranges
+}
+
+fn map_category_range(mut cat_start: u64, cat_end: u64, map: &[Map]) -> Vec<(u64, u64)> {
+    let mut destinations: Vec<(u64, u64)> = Vec::with_capacity(100);
+
+    for m in map {
+        let start = m.source_start;
+        let end = m.source_start + m.length;
+        // the maps are sorted by source_start, so if the category starts before the current
+        // mapping range, it is unmapped and thus taken over in the destination 1:1
+        if cat_start < start {
+            let new_cat_start = start.min(cat_end);
+            destinations.push((cat_start, new_cat_start));
+            cat_start = new_cat_start;
+        }
+        if cat_start >= cat_end {
+            break;
+        }
+        // If the end of the source sequence is before the
+        // start of the mapping range, we can end this loop here
+        if cat_end <= start {
+            break;
+        }
+        // if the start of the source sequence is after this mapping sequence, skip to the next map
+        if cat_start >= end {
+            continue;
+        }
+        let overlap_start = start.max(cat_start);
+        let overlap_end = end.min(cat_end);
+        destinations.push((
+            overlap_start - m.source_start + m.dest_start,
+            overlap_end - m.source_start + m.dest_start,
+        ));
+
+        cat_start = overlap_end;
+    }
+    // deal with possible leftover unmapped source range
+    if cat_start < cat_end {
+        destinations.push((cat_start, cat_end));
+    }
+
+    destinations
 }
 
 #[cfg(test)]
@@ -188,5 +257,17 @@ humidity-to-location map:
 
         // then
         assert_eq!(&soils, &[81, 14, 57, 13]);
+    }
+
+    #[test]
+    fn map_seed_ranges_works_for_example() {
+        // given
+        let almanac = parse(ALMANAC).expect("expected successful parsing");
+
+        // when
+        let mapped = map_seed_ranges(&almanac);
+
+        // then
+        assert_eq!(mapped.iter().map(|(start, _)| start).min(), Some(&46));
     }
 }
