@@ -1,3 +1,5 @@
+#![feature(isqrt)]
+
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -9,17 +11,12 @@ fn main() -> Result<(), String> {
     let content = read_to_string(Path::new(&filename)).map_err(|e| e.to_string())?;
     let races = parse(&content)?;
 
-    let beat_record_prod = ways_to_win(&races);
+    let beat_record_prod = ways_to_win_prod(&races);
     println!("The product of the number of ways to win the race is {beat_record_prod}");
 
-    let race = fix_bad_kerning(&races);
-    // there is probably a smarter way to do this
-    // e.g. using simple math to find the first and the last winning combination
-    // and calculating the number of possibilities from there
-    // with the `--release` flag, the brute force solution only takes about 125ms, so I'll skip the
-    // optimization for now.
-    let beat_record_long_race = ways_to_win(&[race]);
-    println!("When there is only one long race, the product is {beat_record_long_race}");
+    let (time, distance) = fix_bad_kerning(&races);
+    let beat_record_long_race = ways_to_win(time, distance);
+    println!("When there is only one long race, there are {beat_record_long_race} ways to win");
 
     Ok(())
 }
@@ -57,18 +54,35 @@ fn fix_bad_kerning(races: &[(u64, u64)]) -> (u64, u64) {
     })
 }
 
-fn ways_to_win(races: &[(u64, u64)]) -> usize {
-    // for now, a simple brute force approach will do (too early in the morning).
-    // I'll probably regret this in part 2
+fn ways_to_win_prod(races: &[(u64, u64)]) -> u64 {
     races
         .iter()
-        .map(|(time, distance)| {
-            (1..*time)
-                .map(move |a| a * (time - a))
-                .filter(|d| d > distance)
-                .count()
-        })
+        .map(|(time, distance)| ways_to_win(*time, *distance))
         .product()
+}
+
+fn ways_to_win(time: u64, distance: u64) -> u64 {
+    // this function assumes reasonable input, which I have not checked for
+    // usually, the puzzle inputs are reasonable, but you never know
+    // Bad input may lead to integer overflows or it may break the sqrt function
+    let det = ((time / 2 + time % 2).pow(2) - distance).isqrt();
+    let mut min_to_win = time / 2 - det;
+    let mut max_to_win = time / 2 + det;
+    // There was a lot of rounding involved, but the result has to be somewhere around here, search
+    // for it(this feels kind of stupid, but whatever)
+    while min_to_win * (time - min_to_win) > distance {
+        min_to_win -= 1;
+    }
+    while min_to_win * (time - min_to_win) <= distance {
+        min_to_win += 1;
+    }
+    while max_to_win * (time - max_to_win) > distance {
+        max_to_win += 1;
+    }
+    while max_to_win * (time - max_to_win) <= distance {
+        max_to_win -= 1
+    }
+    max_to_win - min_to_win + 1
 }
 
 #[cfg(test)]
@@ -80,12 +94,12 @@ Distance:  9  40  200
 "#;
 
     #[test]
-    fn ways_to_win_works_for_example() {
+    fn ways_to_win_prod_works_for_example() {
         // given
         let races = parse(RACES).expect("expected successful parsing");
 
         // when
-        let result = ways_to_win(&races);
+        let result = ways_to_win_prod(&races);
 
         // then
         assert_eq!(result, 288);
@@ -102,5 +116,13 @@ Distance:  9  40  200
         // then
         assert_eq!(t, 71530);
         assert_eq!(d, 940200);
+    }
+
+    #[test]
+    fn ways_to_win_works_for_examples() {
+        assert_eq!(ways_to_win(7, 9), 4);
+        assert_eq!(ways_to_win(15, 40), 8);
+        assert_eq!(ways_to_win(30, 200), 9);
+        assert_eq!(ways_to_win(71530, 940200), 71503);
     }
 }
