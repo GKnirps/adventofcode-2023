@@ -10,8 +10,11 @@ fn main() -> Result<(), String> {
     let content = read_to_string(Path::new(&filename)).map_err(|e| e.to_string())?;
     let hands = parse(&content)?;
 
-    let winnings = total_winnings(hands);
-    println!("your total points are {winnings}");
+    let winnings = total_winnings(hands.clone());
+    println!("your total winnings are {winnings}");
+
+    let winnings_joker = total_winnings_joker(hands);
+    println!("your total winnings when playing with a joker are {winnings_joker}");
 
     Ok(())
 }
@@ -42,6 +45,22 @@ enum Card {
     Q,
     K,
     A,
+}
+
+impl Card {
+    fn cmp_joker(self, other: Self) -> Ordering {
+        if self == Card::J {
+            if other == Card::J {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        } else if other == Card::J {
+            Ordering::Greater
+        } else {
+            self.cmp(&other)
+        }
+    }
 }
 
 fn card_from_byte(c: u8) -> Result<Card, String> {
@@ -89,6 +108,46 @@ impl Hand {
             HandType::High
         }
     }
+
+    fn hand_type_joker(&self) -> HandType {
+        let mut counter: [u8; 13] = [0; 13];
+        for c in self.0 {
+            counter[c as usize] += 1;
+        }
+        let joker = counter[Card::J as usize];
+        counter[Card::J as usize] = 0;
+        counter.sort_unstable_by(|l, r| r.cmp(l));
+        counter[0] += joker;
+        if counter[0] == 5 {
+            HandType::Five
+        } else if counter[0] == 4 {
+            HandType::Four
+        } else if counter[0] == 3 && counter[1] == 2 {
+            HandType::FullHouse
+        } else if counter[0] == 3 {
+            HandType::Three
+        } else if counter[0] == 2 && counter[1] == 2 {
+            HandType::TwoPair
+        } else if counter[0] == 2 {
+            HandType::Pair
+        } else {
+            HandType::High
+        }
+    }
+
+    fn cmp_joker(&self, other: &Self) -> Ordering {
+        self.hand_type_joker()
+            .cmp(&other.hand_type_joker())
+            .then_with(|| {
+                for (l, r) in self.0.iter().zip(other.0.iter()) {
+                    let o = l.cmp_joker(*r);
+                    if o != Ordering::Equal {
+                        return o;
+                    }
+                }
+                Ordering::Equal
+            })
+    }
 }
 
 impl Ord for Hand {
@@ -133,7 +192,16 @@ fn parse(input: &str) -> Result<Vec<(Hand, u32)>, String> {
 }
 
 fn total_winnings(mut hands: Vec<(Hand, u32)>) -> usize {
-    hands.sort_unstable_by_key(|(hand, _)| *hand);
+    hands.sort_by_key(|(hand, _)| *hand);
+    hands
+        .iter()
+        .enumerate()
+        .map(|(i, (_, bid))| (i + 1) * *bid as usize)
+        .sum()
+}
+
+fn total_winnings_joker(mut hands: Vec<(Hand, u32)>) -> usize {
+    hands.sort_by(|(l, _), (r, _)| l.cmp_joker(r));
     hands
         .iter()
         .enumerate()
@@ -162,5 +230,17 @@ QQQJA 483
 
         // then
         assert_eq!(winnings, 6440);
+    }
+
+    #[test]
+    fn total_winnings_joker_works_for_example() {
+        // given
+        let hands = parse(HANDS).expect("expected successful parsing");
+
+        // when
+        let winnings = total_winnings_joker(hands);
+
+        // then
+        assert_eq!(winnings, 5905);
     }
 }
