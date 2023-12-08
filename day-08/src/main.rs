@@ -13,6 +13,9 @@ fn main() -> Result<(), String> {
     let steps = find_path_length(&dirs, &nodes)?;
     println!("{steps} steps are required to reach 'ZZZ'");
 
+    let ghost_steps = find_ghost_path_length(&dirs, &nodes)?;
+    println!("{ghost_steps} ghost steps are required to reach an end state");
+
     Ok(())
 }
 
@@ -88,6 +91,59 @@ fn find_path_length(dirs: &[Dir], nodes: &HashMap<&str, Node>) -> Result<usize, 
     Ok(steps)
 }
 
+fn find_any_end_path_length(
+    dirs: &[Dir],
+    nodes: &HashMap<&str, Node>,
+    start_node: &str,
+) -> Result<u64, String> {
+    let mut steps: u64 = 0;
+    let mut current_node: &str = start_node;
+    while !current_node.ends_with('Z') {
+        let node = nodes
+            .get(current_node)
+            .ok_or_else(|| format!("unable to find directions for node '{current_node}'"))?;
+        current_node = match dirs[steps as usize % dirs.len()] {
+            Dir::Left => node.left,
+            Dir::Right => node.right,
+        };
+        steps += 1
+    }
+    Ok(steps)
+}
+
+fn find_ghost_path_length(dirs: &[Dir], nodes: &HashMap<&str, Node>) -> Result<u64, String> {
+    // note: this only works if there is only _one_ cycle length in the paths
+    let paths_to_end: Vec<u64> = nodes
+        .keys()
+        .filter(|node| node.ends_with('A'))
+        .map(|node| find_any_end_path_length(dirs, nodes, node))
+        .collect::<Result<Vec<u64>, String>>()?;
+    paths_to_end
+        .iter()
+        .copied()
+        .reduce(lcm)
+        .ok_or_else(|| "no starting nodes found".to_string())
+}
+
+fn gcd(mut m: u64, mut n: u64) -> u64 {
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    while n != 0 {
+        let h = m % n;
+        m = n;
+        n = h;
+    }
+    m
+}
+
+fn lcm(m: u64, n: u64) -> u64 {
+    (m * n) / gcd(m, n)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -129,6 +185,28 @@ ZZZ = (ZZZ, ZZZ)
 
         // when
         let steps = find_path_length(&dirs, &nodes);
+
+        // then
+        assert_eq!(steps, Ok(6));
+    }
+    const EXAMPLE_3: &str = r#"LR
+
+11A = (11B, XXX)
+11B = (XXX, 11Z)
+11Z = (11B, XXX)
+22A = (22B, XXX)
+22B = (22C, 22C)
+22C = (22Z, 22Z)
+22Z = (22B, 22B)
+XXX = (XXX, XXX)
+"#;
+    #[test]
+    fn find_ghost_path_length_works_for_example() {
+        // given
+        let (dirs, nodes) = parse(EXAMPLE_3).expect("expected successful parsing");
+
+        // when
+        let steps = find_ghost_path_length(&dirs, &nodes);
 
         // then
         assert_eq!(steps, Ok(6));
