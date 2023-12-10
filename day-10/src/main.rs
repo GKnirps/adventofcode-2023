@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -14,6 +14,12 @@ fn main() -> Result<(), String> {
         println!("The point farthest from the starting point is {distance} steps away.");
     } else {
         println!("I got lost in the tubes…");
+    }
+
+    if let Some(area) = enclosed_area(start, &edges) {
+        println!("{area} tiles are enclosed by the loop");
+    } else {
+        println!("I got lost between the tubes…");
     }
 
     Ok(())
@@ -183,6 +189,79 @@ fn loop_distance(start: Node, edges: &Edges) -> Option<usize> {
     Some(steps)
 }
 
+fn filter_loop_edges_in_double_space(start: Node, edges: &Edges) -> Option<HashSet<Node>> {
+    let (mut current, _) = edges.get(&start)?;
+    let mut loop_edges: HashSet<Node> = HashSet::with_capacity(edges.len() * 2);
+    let mut prev = start;
+    loop_edges.insert((2 + start.0 * 2, 2 + start.1 * 2));
+    loop_edges.insert(odd_in_between(start, current));
+    while current != start {
+        let (dir1, dir2) = edges.get(&current)?;
+        loop_edges.insert((2 + current.0 * 2, 2 + current.1 * 2));
+        if *dir1 == prev {
+            loop_edges.insert(odd_in_between(current, *dir2));
+            prev = current;
+            current = *dir2;
+        } else {
+            loop_edges.insert(odd_in_between(current, *dir1));
+            prev = current;
+            current = *dir1;
+        }
+    }
+    Some(loop_edges)
+}
+
+fn odd_in_between((ax, ay): Node, (bx, by): Node) -> Node {
+    // assumption: a and b are neighbours (so ax == bx or ay == by)
+    if ax == bx {
+        (ax * 2 + 2, ay.min(by) * 2 + 3)
+    } else {
+        (ax.min(bx) * 2 + 3, ay * 2 + 2)
+    }
+}
+
+fn enclosed_area(start: Node, edges: &Edges) -> Option<usize> {
+    // idea: double all positions (to make space between pipes), then flood the outside area, then discard
+    // odd positions, then subtract it from the total area
+    let double_edges = filter_loop_edges_in_double_space(start, edges)?;
+
+    let width = double_edges.iter().map(|(x, _)| x).max()? + 2;
+    let height = double_edges.iter().map(|(_, y)| y).max()? + 2;
+
+    let mut visited: HashSet<Node> = HashSet::with_capacity(width * height);
+
+    let mut queue: Vec<Node> = Vec::with_capacity(width * height);
+    queue.push((0, 0));
+
+    while let Some((x, y)) = queue.pop() {
+        visited.insert((x, y));
+        if x != 0 && !double_edges.contains(&(x - 1, y)) && !visited.contains(&(x - 1, y)) {
+            queue.push((x - 1, y));
+        }
+        if y != 0 && !double_edges.contains(&(x, y - 1)) && !visited.contains(&(x, y - 1)) {
+            queue.push((x, y - 1));
+        }
+        if x + 1 < width && !double_edges.contains(&(x + 1, y)) && !visited.contains(&(x + 1, y)) {
+            queue.push((x + 1, y));
+        }
+        if y + 1 < height && !double_edges.contains(&(x, y + 1)) && !visited.contains(&(x, y + 1)) {
+            queue.push((x, y + 1));
+        }
+    }
+
+    Some(
+        (width / 2) * (height / 2)
+            - visited
+                .iter()
+                .filter(|(x, y)| x % 2 == 0 && y % 2 == 0)
+                .count()
+            - double_edges
+                .iter()
+                .filter(|(x, y)| x % 2 == 0 && y % 2 == 0)
+                .count(),
+    )
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -204,5 +283,73 @@ LJ...
 
         // then
         assert_eq!(result, Some(8));
+    }
+
+    const ENCLOSED_EX1: &str = r#"..........
+.S------7.
+.|F----7|.
+.||....||.
+.||....||.
+.|L-7F-J|.
+.|..||..|.
+.L--JL--J.
+..........
+"#;
+
+    const ENCLOSED_EX2: &str = r#".F----7F7F7F7F-7....
+.|F--7||||||||FJ....
+.||.FJ||||||||L7....
+FJL7L7LJLJ||LJ.L-7..
+L--J.L7...LJS7F-7L7.
+....F-J..F7FJ|L7L7L7
+....L7.F7||L7|.L7L7|
+.....|FJLJ|FJ|F7|.LJ
+....FJL-7.||.||||...
+....L---J.LJ.LJLJ...
+"#;
+
+    const ENCLOSED_EX3: &str = r#"FF7FSF7F7F7F7F7F---7
+L|LJ||||||||||||F--J
+FL-7LJLJ||||||LJL-77
+F--JF--7||LJLJ7F7FJ-
+L---JF-JLJ.||-FJLJJ7
+|F|F-JF---7F7-L7L|7|
+|FFJF7L7F-JF7|JL---7
+7-L-JL7||F7|L7F-7F7|
+L.L7LFJ|||||FJL7||LJ
+L7JLJL-JLJLJL--JLJ.L
+"#;
+
+    #[test]
+    fn enclosed_area_works_for_example1() {
+        // given
+        let (start, edges) = parse(ENCLOSED_EX1).expect("expected successful parsing");
+
+        // when
+        let area = enclosed_area(start, &edges);
+
+        assert_eq!(area, Some(4));
+    }
+
+    #[test]
+    fn enclosed_area_works_for_example2() {
+        // given
+        let (start, edges) = parse(ENCLOSED_EX2).expect("expected successful parsing");
+
+        // when
+        let area = enclosed_area(start, &edges);
+
+        assert_eq!(area, Some(8));
+    }
+
+    #[test]
+    fn enclosed_area_works_for_example3() {
+        // given
+        let (start, edges) = parse(ENCLOSED_EX3).expect("expected successful parsing");
+
+        // when
+        let area = enclosed_area(start, &edges);
+
+        assert_eq!(area, Some(10));
     }
 }
