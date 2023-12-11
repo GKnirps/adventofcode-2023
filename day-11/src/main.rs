@@ -10,9 +10,13 @@ fn main() -> Result<(), String> {
 
     let stars = parse(&content)?;
 
-    let adjusted_stars = adjust_space(stars);
+    let adjusted_stars = adjust_space(stars.clone(), 2);
     let distances = distance_sum(&adjusted_stars);
     println!("The sum of distances between stars is {distances}");
+
+    let adjusted_stars = adjust_space(stars, 1000000);
+    let distances = distance_sum(&adjusted_stars);
+    println!("The sum of distances between stars (with an expansion of a million) is {distances}");
 
     Ok(())
 }
@@ -36,7 +40,7 @@ fn parse(input: &str) -> Result<Vec<Pos>, String> {
         .collect())
 }
 
-fn adjust_space(mut stars: Vec<Pos>) -> Vec<Pos> {
+fn adjust_space(mut stars: Vec<Pos>, factor: usize) -> Vec<Pos> {
     if stars.len() < 2 {
         return stars;
     }
@@ -53,7 +57,7 @@ fn adjust_space(mut stars: Vec<Pos>) -> Vec<Pos> {
     for (i, star) in stars.iter_mut().enumerate() {
         for (j, diff) in &empty_rows {
             if i > *j {
-                star.0 += diff - 1;
+                star.0 += (diff - 1) * (factor - 1);
             }
         }
     }
@@ -71,7 +75,7 @@ fn adjust_space(mut stars: Vec<Pos>) -> Vec<Pos> {
     for (i, star) in stars.iter_mut().enumerate() {
         for (j, diff) in &empty_cols {
             if i > *j {
-                star.1 += diff - 1;
+                star.1 += (diff - 1) * (factor - 1);
             }
         }
     }
@@ -115,10 +119,23 @@ mod test {
         let stars = parse(EXAMPLE).expect("expected successful parsing");
 
         // when
-        let stars = adjust_space(stars);
+        let stars = adjust_space(stars, 2);
         let distances = distance_sum(&stars);
 
         // then
         assert_eq!(distances, 374);
+    }
+
+    #[test]
+    fn distance_sum_works_for_example_with_large_expansion() {
+        // given
+        let stars = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let stars = adjust_space(stars, 10);
+        let distances = distance_sum(&stars);
+
+        // then
+        assert_eq!(distances, 1030);
     }
 }
