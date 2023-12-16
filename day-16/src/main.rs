@@ -11,8 +11,11 @@ fn main() -> Result<(), String> {
 
     let contraption = parse(&content)?;
 
-    let e = energized_tiles(&contraption);
+    let e = energized_tiles(&contraption, 0, 0, Dir::East);
     println!("{e} tiles are energized");
+
+    let e_max = maximize_energized(&contraption);
+    println!("With an optimal starting point, {e_max} tiles are energized");
 
     Ok(())
 }
@@ -77,7 +80,12 @@ fn parse(input: &str) -> Result<Contraption, String> {
     Ok(Contraption { tiles, width })
 }
 
-fn energized_tiles(contraption: &Contraption) -> usize {
+fn energized_tiles(
+    contraption: &Contraption,
+    start_x: usize,
+    start_y: usize,
+    start_dir: Dir,
+) -> usize {
     let mut queue: Vec<(usize, usize, Dir)> = Vec::with_capacity(contraption.tiles.len());
     let mut visited: HashSet<(usize, usize, Dir)> = HashSet::with_capacity(contraption.tiles.len());
     let mut energized: HashSet<(usize, usize)> = HashSet::with_capacity(contraption.tiles.len());
@@ -85,7 +93,7 @@ fn energized_tiles(contraption: &Contraption) -> usize {
         return 0;
     }
 
-    queue.push((0, 0, Dir::East));
+    queue.push((start_x, start_y, start_dir));
     while let Some((x, y, dir)) = queue.pop() {
         if visited.contains(&(x, y, dir)) {
             continue;
@@ -201,6 +209,24 @@ fn energized_tiles(contraption: &Contraption) -> usize {
     energized.len()
 }
 
+fn maximize_energized(contraption: &Contraption) -> usize {
+    (0..contraption.width)
+        .flat_map(|x| {
+            [
+                energized_tiles(contraption, x, 0, Dir::South),
+                energized_tiles(contraption, x, contraption.height() - 1, Dir::North),
+            ]
+        })
+        .chain((0..contraption.height()).flat_map(|y| {
+            [
+                energized_tiles(contraption, 0, y, Dir::East),
+                energized_tiles(contraption, contraption.width - 1, y, Dir::West),
+            ]
+        }))
+        .max()
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -223,9 +249,21 @@ mod test {
         let contraption = parse(EXAMPLE).expect("expected successful parsing");
 
         // when
-        let e = energized_tiles(&contraption);
+        let e = energized_tiles(&contraption, 0, 0, Dir::East);
 
         // then
         assert_eq!(e, 46);
+    }
+
+    #[test]
+    fn maximize_energized_works_for_example() {
+        // given
+        let contraption = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let e = maximize_energized(&contraption);
+
+        // then
+        assert_eq!(e, 51);
     }
 }
