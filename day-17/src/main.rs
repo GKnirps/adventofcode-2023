@@ -12,7 +12,7 @@ fn main() -> Result<(), String> {
 
     let heat_loss_map = parse(&content)?;
 
-    if let Some(heat_loss) = shortest_path(&heat_loss_map) {
+    if let Some(heat_loss) = shortest_path(&heat_loss_map, 0, 3) {
         println!("The path with minimal heat loss has a heat loss of {heat_loss}");
     } else {
         println!("There is no path to the goal");
@@ -77,9 +77,9 @@ impl PartialEq for HeapItem {
     }
 }
 
-fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
+fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u32) -> Option<u32> {
     let mut heap: BinaryHeap<HeapItem> =
-        BinaryHeap::with_capacity(heat_loss_map.tiles.len() * 4 * 3);
+        BinaryHeap::with_capacity(heat_loss_map.tiles.len() * 4 * max_straight as usize);
     // it does not matter in which direction we start, I guess, because we can just change
     // directions in the first step
     heap.push(HeapItem {
@@ -87,7 +87,8 @@ fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
         node: (0, 0, 0, Dir::South),
     });
 
-    let mut visited: HashSet<Node> = HashSet::with_capacity(heat_loss_map.tiles.len() * 4 * 3);
+    let mut visited: HashSet<Node> =
+        HashSet::with_capacity(heat_loss_map.tiles.len() * 4 * max_straight as usize);
 
     while let Some(heap_item) = heap.pop() {
         if heap_item.node.0 == heat_loss_map.width - 1
@@ -106,7 +107,7 @@ fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
         } = heap_item;
         match dir {
             Dir::North => {
-                if y > 0 && steps < 3 {
+                if y > 0 && steps < max_straight {
                     if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y - 1) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
@@ -130,7 +131,7 @@ fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
                 }
             }
             Dir::South => {
-                if steps < 3 {
+                if steps < max_straight {
                     if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y + 1) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
@@ -154,7 +155,7 @@ fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
                 }
             }
             Dir::East => {
-                if steps < 3 {
+                if steps < max_straight {
                     if let Some(neighbour_heat_loss) = heat_loss_map.get(x + 1, y) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
@@ -178,7 +179,7 @@ fn shortest_path(heat_loss_map: &HeatLossMap) -> Option<u32> {
                 }
             }
             Dir::West => {
-                if x > 0 && steps < 3 {
+                if x > 0 && steps < max_straight {
                     if let Some(neighbour_heat_loss) = heat_loss_map.get(x - 1, y) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
@@ -252,7 +253,7 @@ mod test {
         let heat_loss_map = parse(EXAMPLE).expect("expected successful parsing");
 
         // when
-        let heat_loss = shortest_path(&heat_loss_map);
+        let heat_loss = shortest_path(&heat_loss_map, 0, 3);
 
         // then
         assert_eq!(heat_loss, Some(102));
