@@ -18,6 +18,14 @@ fn main() -> Result<(), String> {
         println!("There is no path to the goal");
     }
 
+    if let Some(heat_loss) = shortest_path(&heat_loss_map, 4, 10) {
+        println!("The ultra-crucible path with minimal heat loss has a heat loss of {heat_loss}");
+    } else {
+        println!(
+            "There is _no way_ to steer this frilkin' ultra crucible through this frikkin' city"
+        );
+    }
+
     Ok(())
 }
 
@@ -80,11 +88,15 @@ impl PartialEq for HeapItem {
 fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u32) -> Option<u32> {
     let mut heap: BinaryHeap<HeapItem> =
         BinaryHeap::with_capacity(heat_loss_map.tiles.len() * 4 * max_straight as usize);
-    // it does not matter in which direction we start, I guess, because we can just change
-    // directions in the first step
+    // since we have a minimum steps to go in a straight line, we have to consider both directions
+    // as starting directions (there is no given starting direction in the puzzle
     heap.push(HeapItem {
         heat_loss: 0,
         node: (0, 0, 0, Dir::South),
+    });
+    heap.push(HeapItem {
+        heat_loss: 0,
+        node: (0, 0, 0, Dir::East),
     });
 
     let mut visited: HashSet<Node> =
@@ -93,6 +105,7 @@ fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u
     while let Some(heap_item) = heap.pop() {
         if heap_item.node.0 == heat_loss_map.width - 1
             && heap_item.node.1 == heat_loss_map.height() - 1
+            && heap_item.node.2 >= min_straight
         {
             return Some(heap_item.heat_loss);
         }
@@ -115,19 +128,21 @@ fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u
                         });
                     }
                 }
-                if x > 0 {
-                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x - 1, y) {
+                if steps >= min_straight {
+                    if x > 0 {
+                        if let Some(neighbour_heat_loss) = heat_loss_map.get(x - 1, y) {
+                            heap.push(HeapItem {
+                                heat_loss: heat_loss + neighbour_heat_loss,
+                                node: (x - 1, y, 1, Dir::West),
+                            });
+                        }
+                    }
+                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x + 1, y) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
-                            node: (x - 1, y, 1, Dir::West),
+                            node: (x + 1, y, 1, Dir::East),
                         });
                     }
-                }
-                if let Some(neighbour_heat_loss) = heat_loss_map.get(x + 1, y) {
-                    heap.push(HeapItem {
-                        heat_loss: heat_loss + neighbour_heat_loss,
-                        node: (x + 1, y, 1, Dir::East),
-                    });
                 }
             }
             Dir::South => {
@@ -139,19 +154,21 @@ fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u
                         });
                     }
                 }
-                if x > 0 {
-                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x - 1, y) {
+                if steps >= min_straight {
+                    if x > 0 {
+                        if let Some(neighbour_heat_loss) = heat_loss_map.get(x - 1, y) {
+                            heap.push(HeapItem {
+                                heat_loss: heat_loss + neighbour_heat_loss,
+                                node: (x - 1, y, 1, Dir::West),
+                            });
+                        }
+                    }
+                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x + 1, y) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
-                            node: (x - 1, y, 1, Dir::West),
+                            node: (x + 1, y, 1, Dir::East),
                         });
                     }
-                }
-                if let Some(neighbour_heat_loss) = heat_loss_map.get(x + 1, y) {
-                    heap.push(HeapItem {
-                        heat_loss: heat_loss + neighbour_heat_loss,
-                        node: (x + 1, y, 1, Dir::East),
-                    });
                 }
             }
             Dir::East => {
@@ -163,19 +180,21 @@ fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u
                         });
                     }
                 }
-                if y > 0 {
-                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y - 1) {
+                if steps >= min_straight {
+                    if y > 0 {
+                        if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y - 1) {
+                            heap.push(HeapItem {
+                                heat_loss: heat_loss + neighbour_heat_loss,
+                                node: (x, y - 1, 1, Dir::North),
+                            });
+                        }
+                    }
+                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y + 1) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
-                            node: (x, y - 1, 1, Dir::North),
+                            node: (x, y + 1, 1, Dir::South),
                         });
                     }
-                }
-                if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y + 1) {
-                    heap.push(HeapItem {
-                        heat_loss: heat_loss + neighbour_heat_loss,
-                        node: (x, y + 1, 1, Dir::South),
-                    });
                 }
             }
             Dir::West => {
@@ -187,19 +206,21 @@ fn shortest_path(heat_loss_map: &HeatLossMap, min_straight: u32, max_straight: u
                         });
                     }
                 }
-                if y > 0 {
-                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y - 1) {
+                if steps >= min_straight {
+                    if y > 0 {
+                        if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y - 1) {
+                            heap.push(HeapItem {
+                                heat_loss: heat_loss + neighbour_heat_loss,
+                                node: (x, y - 1, 1, Dir::North),
+                            });
+                        }
+                    }
+                    if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y + 1) {
                         heap.push(HeapItem {
                             heat_loss: heat_loss + neighbour_heat_loss,
-                            node: (x, y - 1, 1, Dir::North),
+                            node: (x, y + 1, 1, Dir::South),
                         });
                     }
-                }
-                if let Some(neighbour_heat_loss) = heat_loss_map.get(x, y + 1) {
-                    heap.push(HeapItem {
-                        heat_loss: heat_loss + neighbour_heat_loss,
-                        node: (x, y + 1, 1, Dir::South),
-                    });
                 }
             }
         }
@@ -247,6 +268,13 @@ mod test {
 4322674655533
 "#;
 
+    const ULTRA_EXAMPLE: &str = r#"111111111111
+999999999991
+999999999991
+999999999991
+999999999991
+"#;
+
     #[test]
     fn shortest_path_works_for_example() {
         // given
@@ -257,5 +285,29 @@ mod test {
 
         // then
         assert_eq!(heat_loss, Some(102));
+    }
+
+    #[test]
+    fn shortest_path_works_for_ultra_example() {
+        // given
+        let heat_loss_map = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let heat_loss = shortest_path(&heat_loss_map, 4, 10);
+
+        // then
+        assert_eq!(heat_loss, Some(94));
+    }
+
+    #[test]
+    fn shortest_path_works_for_other_ultra_example() {
+        // given
+        let heat_loss_map = parse(ULTRA_EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let heat_loss = shortest_path(&heat_loss_map, 4, 10);
+
+        // then
+        assert_eq!(heat_loss, Some(71));
     }
 }
