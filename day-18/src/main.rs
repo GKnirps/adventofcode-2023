@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -13,6 +12,10 @@ fn main() -> Result<(), String> {
     let lagoon_area = dig(&instructions);
     println!("The lagoon can hold {lagoon_area} m³ lava");
 
+    let instructions = fix_instructions(&instructions)?;
+    let large_lagoon_area = dig(&instructions);
+    println!("The lagoon with correctedinstructions can hold {large_lagoon_area} m³ lava");
+
     Ok(())
 }
 
@@ -22,6 +25,18 @@ enum Dir {
     Right,
     Down,
     Left,
+}
+
+impl Dir {
+    fn outer_angle(self, other: Self) -> bool {
+        matches!(
+            (self, other),
+            (Dir::Up, Dir::Right)
+                | (Dir::Down, Dir::Left)
+                | (Dir::Right, Dir::Down)
+                | (Dir::Left, Dir::Up)
+        )
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -64,67 +79,87 @@ fn parse_instruction(line: &str) -> Result<Instruction, String> {
     Ok(Instruction { dir, length, color })
 }
 
-fn dig(instructions: &[Instruction]) -> usize {
+fn fix_instruction(instruction: &Instruction) -> Result<Instruction, String> {
+    let dir = match instruction.color % 16 {
+        0 => Ok(Dir::Right),
+        1 => Ok(Dir::Down),
+        2 => Ok(Dir::Left),
+        3 => Ok(Dir::Up),
+        n => Err(format!("unknown direction: '{n}'")),
+    }?;
+
+    let length = instruction.color / 16;
+
+    Ok(Instruction {
+        dir,
+        length,
+        color: instruction.color,
+    })
+}
+
+fn fix_instructions(instructions: &[Instruction]) -> Result<Vec<Instruction>, String> {
+    instructions.iter().map(fix_instruction).collect()
+}
+
+fn dig(instructions: &[Instruction]) -> i64 {
     if instructions.is_empty() {
         return 0;
     }
-    // let's do a simple implementation with a flood fill for part 1
-    let mut pos: (i32, i32) = (0, 0);
-    let mut dug_out: HashSet<(i32, i32)> = HashSet::with_capacity(instructions.len() * 10);
 
-    for Instruction {
-        dir,
-        length,
-        color: _,
-    } in instructions
-    {
-        for _ in 0..*length {
-            dug_out.insert(pos);
-            match dir {
-                Dir::Up => {
-                    pos.1 -= 1;
-                }
-                Dir::Right => {
-                    pos.0 += 1;
-                }
-                Dir::Down => {
-                    pos.1 += 1;
-                }
-                Dir::Left => {
-                    pos.0 -= 1;
-                }
+    let mut pos: (i64, i64) = (0, 0);
+    let mut previous_dir = instructions[instructions.len() - 1].dir;
+    let mut corners: Vec<(i64, i64)> = Vec::with_capacity(instructions.len() + 1);
+    corners.push(pos);
+
+    // assumption: trenches are dug clockwise
+    for pair in instructions.windows(2) {
+        let Instruction {
+            dir,
+            length,
+            color: _,
+        } = pair[0];
+        let next_dir = pair[1].dir;
+        match dir {
+            Dir::Up => {
+                pos.1 -= length as i64 - 1
+                    + if previous_dir.outer_angle(dir) { 1 } else { 0 }
+                    + if dir.outer_angle(next_dir) { 1 } else { 0 };
+                corners.push(pos);
+            }
+            Dir::Right => {
+                pos.0 += length as i64 - 1
+                    + if previous_dir.outer_angle(dir) { 1 } else { 0 }
+                    + if dir.outer_angle(next_dir) { 1 } else { 0 };
+                corners.push(pos);
+            }
+            Dir::Down => {
+                pos.1 += length as i64 - 1
+                    + if previous_dir.outer_angle(dir) { 1 } else { 0 }
+                    + if dir.outer_angle(next_dir) { 1 } else { 0 };
+                corners.push(pos);
+            }
+            Dir::Left => {
+                pos.0 -= length as i64 - 1
+                    + if previous_dir.outer_angle(dir) { 1 } else { 0 }
+                    + if dir.outer_angle(next_dir) { 1 } else { 0 };
+                corners.push(pos);
             }
         }
+        previous_dir = dir;
     }
 
-    let min_x = dug_out.iter().map(|(x, _)| *x).min().unwrap_or(0) - 1;
-    let min_y = dug_out.iter().map(|(_, y)| *y).min().unwrap_or(0) - 1;
-    let max_x = dug_out.iter().map(|(x, _)| *x).max().unwrap_or(0) + 1;
-    let max_y = dug_out.iter().map(|(_, y)| *y).max().unwrap_or(0) + 1;
+    corners.push((0, 0));
 
-    let total_area = ((max_x - min_x + 1) * (max_y - min_y + 1)) as usize;
-
-    let mut queue: Vec<(i32, i32)> = Vec::with_capacity(total_area);
-    let mut outside: HashSet<(i32, i32)> = HashSet::with_capacity(total_area);
-
-    queue.push((min_x, min_y));
-    while let Some((x, y)) = queue.pop() {
-        if !outside.contains(&(x, y))
-            && !dug_out.contains(&(x, y))
-            && x >= min_x
-            && y >= min_y
-            && x <= max_x
-            && y <= max_y
-        {
-            outside.insert((x, y));
-            queue.push((x - 1, y));
-            queue.push((x, y - 1));
-            queue.push((x + 1, y));
-            queue.push((x, y + 1));
-        }
-    }
-
-    total_area - outside.len()
+    (corners
+        .windows(2)
+        .map(|win| {
+            let (x1, y1) = win[0];
+            let (x2, y2) = win[1];
+            (y1 + y2) * (x1 - x2)
+        })
+        .sum::<i64>()
+        / 2)
+    .abs()
 }
 
 #[cfg(test)]
@@ -157,5 +192,18 @@ U 2 (#7a21e3)
 
         // then
         assert_eq!(dug_out, 62);
+    }
+
+    #[test]
+    fn dig_works_for_fixed_example() {
+        // given
+        let instructions = fix_instructions(&parse(EXAMPLE).expect("expected successful parsing"))
+            .expect("expected successful correction");
+
+        // when
+        let dug_out = dig(&instructions);
+
+        // then
+        assert_eq!(dug_out, 952408144115);
     }
 }
