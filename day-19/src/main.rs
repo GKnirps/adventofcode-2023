@@ -13,7 +13,170 @@ fn main() -> Result<(), String> {
     let rating_sum = accepted_rating(&parts, &workflows);
     println!("The sum of the ratings of accepted parts is {rating_sum}");
 
+    let accepted_combinations = find_combinations(&workflows, LOWEST_PART, HIGHEST_PART, "in");
+    println!("There are {accepted_combinations} combinations of ratings that are accepted by the elves' workflows.");
+
     Ok(())
+}
+
+const LOWEST_PART: Part = Part {
+    extremely_cool: 1,
+    musical: 1,
+    aerodynamic: 1,
+    shiny: 1,
+};
+const HIGHEST_PART: Part = Part {
+    extremely_cool: 4001,
+    musical: 4001,
+    aerodynamic: 4001,
+    shiny: 4001,
+};
+
+// let's take no risks with the integer size for the combinations here
+fn find_combinations(
+    workflows: &HashMap<&str, Workflow>,
+    mut lower: Part,
+    mut upper: Part,
+    name: &str,
+) -> u128 {
+    // if the lower bound reached the upper bound anywhere, there are no possible combinations
+    if lower.extremely_cool >= upper.extremely_cool
+        || lower.musical >= upper.musical
+        || lower.aerodynamic >= upper.aerodynamic
+        || lower.shiny >= upper.shiny
+    {
+        return 0;
+    }
+    // ignore missing workflows, assume that parts that go to a missing worklflow are rejected
+    let workflow = match workflows.get(name) {
+        Some(wf) => wf,
+        None => {
+            return 0;
+        }
+    };
+    let mut combinations: u128 = 0;
+    for (cond_op, cond_value, outcome) in &workflow.rules {
+        let cond_op = *cond_op;
+        let cond_value = *cond_value;
+        let outcome = *outcome;
+        let (matched_lower, matched_upper) = match cond_op {
+            Condition::XGt => {
+                let orig_upper = upper;
+                upper.extremely_cool = cond_value + 1;
+                (
+                    Part {
+                        extremely_cool: cond_value + 1,
+                        ..lower
+                    },
+                    orig_upper,
+                )
+            }
+            Condition::XLt => {
+                let orig_lower = lower;
+                lower.extremely_cool = cond_value;
+                (
+                    orig_lower,
+                    Part {
+                        extremely_cool: cond_value,
+                        ..upper
+                    },
+                )
+            }
+            Condition::MGt => {
+                let orig_upper = upper;
+                upper.musical = cond_value + 1;
+                (
+                    Part {
+                        musical: cond_value + 1,
+                        ..lower
+                    },
+                    orig_upper,
+                )
+            }
+            Condition::MLt => {
+                let orig_lower = lower;
+                lower.musical = cond_value;
+                (
+                    orig_lower,
+                    Part {
+                        musical: cond_value,
+                        ..upper
+                    },
+                )
+            }
+            Condition::AGt => {
+                let orig_upper = upper;
+                upper.aerodynamic = cond_value + 1;
+                (
+                    Part {
+                        aerodynamic: cond_value + 1,
+                        ..lower
+                    },
+                    orig_upper,
+                )
+            }
+            Condition::ALt => {
+                let orig_lower = lower;
+                lower.aerodynamic = cond_value;
+                (
+                    orig_lower,
+                    Part {
+                        aerodynamic: cond_value,
+                        ..upper
+                    },
+                )
+            }
+            Condition::SGt => {
+                let orig_upper = upper;
+                upper.shiny = cond_value + 1;
+                (
+                    Part {
+                        shiny: cond_value + 1,
+                        ..lower
+                    },
+                    orig_upper,
+                )
+            }
+            Condition::SLt => {
+                let orig_lower = lower;
+                lower.shiny = cond_value;
+                (
+                    orig_lower,
+                    Part {
+                        shiny: cond_value,
+                        ..upper
+                    },
+                )
+            }
+        };
+        combinations += match outcome {
+            Outcome::Reject => 0,
+            Outcome::Accept => part_combinations(matched_lower, matched_upper),
+            Outcome::SendTo(name) => {
+                find_combinations(workflows, matched_lower, matched_upper, name)
+            }
+        };
+    }
+    combinations
+        + match workflow.default {
+            Outcome::Reject => 0,
+            Outcome::Accept => part_combinations(lower, upper),
+            Outcome::SendTo(name) => find_combinations(workflows, lower, upper, name),
+        }
+}
+
+fn part_combinations(lower: Part, upper: Part) -> u128 {
+    if lower.extremely_cool >= upper.extremely_cool
+        || lower.musical >= upper.musical
+        || lower.aerodynamic >= upper.aerodynamic
+        || lower.shiny >= upper.shiny
+    {
+        return 0;
+    }
+    (upper.extremely_cool - lower.extremely_cool) as u128
+        * (upper.musical - lower.musical) as u128
+        * (upper.aerodynamic - lower.aerodynamic) as u128
+        * (upper.shiny - lower.shiny) as u128
 }
 
 fn accepted_rating(parts: &[Part], workflows: &HashMap<&str, Workflow>) -> i64 {
@@ -274,5 +437,17 @@ hdj{m>838:A,pv}
 
         // then
         assert_eq!(rating, 19114);
+    }
+
+    #[test]
+    fn find_combinations_works_for_example() {
+        // given
+        let (_, workflows) = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let n = find_combinations(&workflows, LOWEST_PART, HIGHEST_PART, "in");
+
+        // then
+        assert_eq!(n, 167409079868000);
     }
 }
