@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -15,11 +15,25 @@ fn main() -> Result<(), String> {
         "{one_disintegrate_options} bricks could be safely chosen as the one to get disintegrated."
     );
 
+    let chain_reaction_fallen = sum_chain_reaction(&bricks);
+    println!("{chain_reaction_fallen} other bricks fell in all chain reactions.");
+
     Ok(())
 }
 
 // preconditions: bricks must be sorted by lowest z
 fn safely_disintegratable(bricks: &[Brick]) -> usize {
+    let supported_by = find_supported_by(bricks);
+    let mut removable = vec![true; bricks.len()];
+    for supports in supported_by.values() {
+        if supports.len() == 1 {
+            removable[supports[0]] = false;
+        }
+    }
+    removable.iter().filter(|r| **r).count()
+}
+
+fn find_supported_by(bricks: &[Brick]) -> HashMap<usize, Vec<usize>> {
     let settled = settle_bricks(bricks);
     let mut supported_by: HashMap<usize, Vec<usize>> = HashMap::with_capacity(bricks.len());
     for (i, brick) in settled.iter().rev().enumerate() {
@@ -32,13 +46,51 @@ fn safely_disintegratable(bricks: &[Brick]) -> usize {
             }
         }
     }
-    let mut removable = vec![true; bricks.len()];
-    for supports in supported_by.values() {
-        if supports.len() == 1 {
-            removable[supports[0]] = false;
+    supported_by
+}
+
+fn sum_chain_reaction(bricks: &[Brick]) -> usize {
+    let supported_by = find_supported_by(bricks);
+    println!(
+        "supported bricks: {}, total: {}",
+        supported_by.len(),
+        bricks.len()
+    );
+
+    (0..bricks.len())
+        .map(|brick_i| chain_reaction(brick_i, &supported_by))
+        .sum()
+}
+
+fn chain_reaction(removed_brick: usize, supported_by: &HashMap<usize, Vec<usize>>) -> usize {
+    let mut fallen: HashSet<usize> = HashSet::with_capacity(supported_by.len());
+    fallen.insert(removed_brick);
+
+    let mut can_fall: HashSet<usize> = supported_by.keys().copied().collect();
+    let mut newly_fallen: Vec<usize> = Vec::with_capacity(can_fall.len());
+    newly_fallen.push(removed_brick);
+    // there is probably a more efficient way than to go over all the bricks over and over again,
+    // but it should still work
+    while !newly_fallen.is_empty() {
+        for brick_i in newly_fallen.drain(..) {
+            can_fall.remove(&brick_i);
+        }
+        for candidate in &can_fall {
+            if fallen.contains(candidate) {
+                continue;
+            }
+            if supported_by
+                .get(candidate)
+                .map(|supports| supports.iter().all(|support| fallen.contains(support)))
+                .unwrap_or(false)
+            {
+                fallen.insert(*candidate);
+                newly_fallen.push(*candidate);
+            }
         }
     }
-    removable.iter().filter(|r| **r).count()
+
+    fallen.len() - 1
 }
 
 fn settle_bricks(bricks: &[Brick]) -> Vec<Brick> {
@@ -139,5 +191,17 @@ mod test {
 
         // then
         assert_eq!(n, 5);
+    }
+
+    #[test]
+    fn sum_chain_reaction_works_for_example() {
+        // given
+        let bricks = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let n = sum_chain_reaction(&bricks);
+
+        // then
+        assert_eq!(n, 7);
     }
 }
