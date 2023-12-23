@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fs::read_to_string;
 use std::path::Path;
@@ -13,13 +13,73 @@ fn main() -> Result<(), String> {
     if let Some(path_length) = longest_path(&map) {
         println!("The longest path is {path_length}");
     } else {
-        println!("I searched for the longest path, but I got lost");
+        println!("I searched for the longest path, but I got lost…");
+    }
+
+    if let Some(path_length) = longest_path_ignore_slopes(&map) {
+        println!("If you ignore slopes, the longest path is {path_length}");
+    } else {
+        println!("I tried to climb up slopes, but I got lost…");
     }
 
     Ok(())
 }
 
 type Point = (usize, usize);
+
+fn longest_path_ignore_slopes(map: &Map) -> Option<u32> {
+    // Wikipedia says this problem is NP hard, but the number of branches should be low, so this is
+    // doable I guess?
+    // Note from after running it: Yes, it works, but it takes a lot of time (~50s with --release
+    // on my machine) and an awful amount of memory
+    // But hey, it works, so no need to spend a lot of time looking for patterns in the input to
+    // optimize the solution
+
+    // I don't want to do this branch exploration again, but I can just take the directed graph and
+    // transform it
+    let edges = derive_directed(map)?;
+    let edges: HashMap<Point, Vec<(Point, u32)>> = edges
+        .iter()
+        .flat_map(|((from, to), distance)| [(*from, (*to, *distance)), (*to, (*from, *distance))])
+        .fold(
+            HashMap::with_capacity(edges.len() * 2 + 2),
+            |mut agg, (from, to)| {
+                agg.entry(from)
+                    .or_insert_with(|| Vec::with_capacity(4))
+                    .push(to);
+                agg
+            },
+        );
+
+    let mut visited: HashMap<(Point, BTreeSet<Point>), u32> = HashMap::with_capacity(edges.len());
+    let mut queue: Vec<(Point, BTreeSet<Point>, u32)> = Vec::with_capacity(edges.len());
+    queue.push(((1, 0), BTreeSet::new(), 0));
+
+    while let Some((edge, ancestors, distance)) = queue.pop() {
+        let child_ancestors = {
+            let mut a = ancestors.clone();
+            a.insert(edge);
+            a
+        };
+        let seen_distance = visited.entry((edge, ancestors)).or_insert(distance);
+        if *seen_distance > distance {
+            continue;
+        }
+        *seen_distance = distance;
+
+        for (child, child_distance) in edges.get(&edge).into_iter().flatten() {
+            if !child_ancestors.contains(child) {
+                queue.push((*child, child_ancestors.clone(), distance + child_distance));
+            }
+        }
+    }
+
+    visited
+        .iter()
+        .filter(|((edge, _), _)| *edge == (map.width - 2, map.height() - 1))
+        .map(|(_, distance)| *distance)
+        .max()
+}
 
 fn longest_path(map: &Map) -> Option<u32> {
     // fun thing is: I have so many places here where I inefficiently loop over data instead of
@@ -56,9 +116,11 @@ fn sort_topological(edges: &HashMap<(Point, Point), u32>) -> Option<Vec<Point>> 
     for (from, to) in edges.keys() {
         predecessors
             .entry(*to)
-            .or_insert(Vec::with_capacity(4))
+            .or_insert_with(|| Vec::with_capacity(4))
             .push(*from);
-        predecessors.entry(*from).or_insert(Vec::with_capacity(4));
+        predecessors
+            .entry(*from)
+            .or_insert_with(|| Vec::with_capacity(4));
     }
     let mut sorted: Vec<Point> = Vec::with_capacity(edges.len() + 1);
 
@@ -317,5 +379,17 @@ mod test {
 
         // then
         assert_eq!(length, Some(94));
+    }
+
+    #[test]
+    fn longest_path_ignore_slopes_works_for_example() {
+        // given
+        let map = parse(EXAMPLE).expect("expected successful parsing");
+
+        // when
+        let length = longest_path_ignore_slopes(&map);
+
+        // then
+        assert_eq!(length, Some(154));
     }
 }
